@@ -198,8 +198,8 @@
       <hr />
       <h2>Create Static Code</h2>
       <p>
-        Note: you CANNOT change where this QR code "points". Scans will not be
-        tracked. This encodes the URL itself.
+        This encodes the URL itself. You CANNOT change where this QR code "points".
+        Scans will not be tracked.
       </p>
       <input type="text" bind:value={staticQr} placeholder="Enter URL" />
       <button on:click={() => openPopup(staticQr, true)}>Generate</button>

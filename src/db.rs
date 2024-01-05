@@ -149,7 +149,7 @@ impl Database {
                         }
                         DatabaseAction::Log((code, url, ip)) => {
                             let naive_date_time =
-                                chrono::offset::Local::now().format("%d/%m/%Y %T");
+                                chrono::offset::Local::now().format("%m/%d/%Y %T");
                             let query = format!(
                                 "INSERT INTO log (redirect, ip, url, timestamp) VALUES ('{code}', '{ip}', '{url}', '{naive_date_time}');"
                             );
