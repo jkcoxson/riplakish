@@ -96,7 +96,7 @@ async fn add_url(
 ) -> Result<(StatusCode, String), StatusCode> {
     let s: String = rand::thread_rng()
         .sample_iter(&rand::distributions::Alphanumeric)
-        .take(8)
+        .take(4)
         .map(char::from)
         .collect();
     if database.insert_url(&url, &s).await {
