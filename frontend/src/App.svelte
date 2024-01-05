@@ -10,6 +10,7 @@
   let selectedRedirect = null;
   let newRedirectUrl = "";
   let logEvents = [];
+  let staticQr = "";
 
   // Fetch redirects stats from /admin/stats API endpoint
   async function fetchRedirects() {
@@ -56,15 +57,17 @@
   }
 
   let popupVisible = false;
-  let chosenCode = null;
   let qrSize = 100;
   let qrColor = "#000000";
   let qrBackgroundColor = "#ffffff";
   let qrTransparent = false;
+  let qrValue = "";
+  let qrEdit = false;
 
   // Function to open the QR code settings popup
-  function openPopup(code) {
-    chosenCode = code;
+  function openPopup(url, edit) {
+    qrValue = url;
+    qrEdit = edit;
     popupVisible = true;
     renderQRCode();
   }
@@ -73,7 +76,7 @@
   function customizeAndDownload() {
     const qrCanvas = document.getElementById("qr-canvas");
     const qr = new QRious({
-      value: `${BASE_URL}/r/${chosenCode}`,
+      value: qrValue,
       foreground: qrColor,
       background: qrBackgroundColor,
       backgroundAlpha: qrTransparent ? 0 : 1,
@@ -83,7 +86,7 @@
     // Download the customized QR code
     const link = document.createElement("a");
     link.href = qr.toDataURL();
-    link.download = `redirect_${chosenCode}_qr.png`;
+    link.download = `redirect_qr.png`;
     link.click();
 
     popupVisible = false; // Close the popup after downloading
@@ -92,7 +95,7 @@
   function renderQRCode() {
     const qrCanvas = document.getElementById("qr-canvas");
     const qr = new QRious({
-      value: `${BASE_URL}/r/${chosenCode}`,
+      value: qrValue,
       foreground: qrColor,
       background: qrBackgroundColor,
       backgroundAlpha: qrTransparent ? 0 : 1,
@@ -156,20 +159,22 @@
                 type="text"
                 bind:value={redirect.url}
                 placeholder="Enter URL"
+                on:change={(event) =>
+                  modifyRedirect(redirect.code, redirect.url)}
               />
             </div>
             <div class="redirect-actions">
-              <button
-                on:click={() => modifyRedirect(redirect.code, redirect.url)}
-                >Update URL</button
-              >
               <button on:click={() => fetchRedirectDetails(redirect.code)}
                 >View Details</button
               >
               <button on:click={() => removeRedirect(redirect.url)}
                 >Delete</button
               >
-              <button on:click={() => openPopup(redirect.code)}>QR Code</button>
+              <button
+                on:click={() =>
+                  openPopup(`${BASE_URL}/r/${redirect.code}`, false)}
+                >QR Code</button
+              >
             </div>
           </li>
         {/each}
@@ -178,9 +183,26 @@
 
     <!-- Create New Redirect -->
     <div class="create-redirect">
+      <hr />
       <h2>Create New Redirect</h2>
+      <p>
+        The destination of this QR code can change in the future, and visits
+        will be tracked. This QR code will not work if Riplakish is not running.
+      </p>
       <input type="text" bind:value={newRedirectUrl} placeholder="Enter URL" />
       <button on:click={addRedirect}>Add Redirect</button>
+    </div>
+
+    <!-- Static QR-->
+    <div class="static-qr">
+      <hr />
+      <h2>Create Static Code</h2>
+      <p>
+        Note: you CANNOT change where this QR code "points". Scans will not be
+        tracked. This encodes the URL itself.
+      </p>
+      <input type="text" bind:value={staticQr} placeholder="Enter URL" />
+      <button on:click={() => openPopup(staticQr, true)}>Generate</button>
     </div>
   {/if}
 
@@ -226,6 +248,17 @@
             on:change={renderQRCode}
           />
         </div>
+        {#if qrEdit}
+          <div class="setting">
+            <label for="qrValue">QR Code Value:</label>
+            <input
+              type="text"
+              id="qrValue"
+              bind:value={qrValue}
+              on:input={renderQRCode}
+            />
+          </div>
+        {/if}
       </div>
       <!-- Add more customizable options for QR code -->
       <br />
@@ -254,15 +287,10 @@
   }
 
   .redirect-box {
-    border: 1px solid #4caf50; /* Green border */
     border-radius: 8px; /* Rounded border */
     padding: 10px;
     margin-bottom: 10px;
     background-color: #2e3338; /* Dark background */
-  }
-
-  .redirect-stats {
-    width: 100%;
   }
 
   .redirect-stats ul {
@@ -280,6 +308,7 @@
     padding: 10px;
     margin-bottom: 10px;
     background-color: #2e3338; /* Dark background */
+    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2);
   }
 
   .redirect-actions button {
@@ -298,7 +327,6 @@
 
   .log-table th,
   .log-table td {
-    border: 1px solid #4caf50; /* Green border */
     border-radius: 8px; /* Rounded border */
     padding: 8px;
     text-align: left;
@@ -326,14 +354,15 @@
   }
 
   /* Styling for the input box */
-  .create-redirect input[type="text"] {
+  input[type="text"] {
     padding: 10px;
     border: 1px solid #4caf50; /* Green border */
     border-radius: 8px; /* Rounded border */
     background-color: #2e3338; /* Dark background */
     color: #fff; /* Text color */
     margin-bottom: 10px;
-    width: 300px; /* Set the width */
+    width: 80%; /* Set the width */
+    max-width: 30vw;
   }
 
   /* Styling for the input placeholder text */
