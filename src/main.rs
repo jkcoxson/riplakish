@@ -44,7 +44,9 @@ async fn main() {
         .with_state(database)
         .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3009").await.unwrap();
+    let port = std::env::var("RIPLAKISH_PORT").unwrap_or("3009".to_string());
+
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await.unwrap();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
