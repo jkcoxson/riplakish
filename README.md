@@ -2,6 +2,8 @@
 
 A link shortener/QR code generator
 
+<img src="images/1.png" width="800">
+
 ## Technology
 
 - Hosting is using Rust's Axum
@@ -29,3 +31,6 @@ Redirects can be accessed at {domain}/r/{code} and the IP will be logged for vie
 
 - [ ] Find a way to automatically determine where the IP is from
 - [ ] Clean the code base
+
+## Images
+<img src="images/2.png" width="600"> <img src="images/3.png" width="300">
