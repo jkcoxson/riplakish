@@ -74,7 +74,7 @@ async fn redirect(
         database.log(code, redirect.clone(), ip).await;
         return Ok(axum::response::Redirect::to(redirect.as_str()));
     }
-    Err((StatusCode::NOT_FOUND, "404 Not Found"))
+    Err((StatusCode::NOT_FOUND, "404 Not Found\n-- Riplakish --"))
 }
 
 async fn base_url(State(database): State<db::Database>) -> String {
