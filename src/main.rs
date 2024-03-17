@@ -43,6 +43,7 @@ async fn main() {
         .route("/admin/add/*url", post(add_url))
         .route("/admin/remove/*url", delete(remove_url))
         .route("/admin/modify/:code/*new_url", post(modify_url))
+        .route("/admin/modify-comment/:code/*new_comment", post(modify_comment))
         .fallback(fallback)
         .with_state(database)
         .layer(cors);
@@ -129,6 +130,18 @@ async fn modify_url(
 ) -> StatusCode {
     info!("Updating {code} to new URL: {new_url}");
     if database.modify_url(code, new_url).await {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn modify_comment(
+    Path((code, new_comment)): Path<(String, String)>,
+    State(database): State<db::Database>,
+) -> StatusCode {
+    info!("Updating {code} to new comment: {new_comment}");
+    if database.modify_comment(code, new_comment).await {
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND

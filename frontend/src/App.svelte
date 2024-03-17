@@ -42,6 +42,14 @@
     fetchRedirects();
   }
 
+  async function modifyComment(code, newComment) {
+    await fetch(`${API_URL}/admin/modify-comment/${code}/${newComment}`, {
+      method: "POST",
+    });
+    // Update the UI or perform any necessary actions after modifying
+    fetchRedirects();
+  }
+
   // Delete a redirect
   async function removeRedirect(url) {
     await fetch(`${API_URL}/admin/remove/${url}`, { method: "DELETE" });
@@ -175,6 +183,14 @@
                   openPopup(`${BASE_URL}/r/${redirect.code}`, false)}
                 >QR Code</button
               >
+              <hr>
+              <input
+                type="text"
+                bind:value={redirect.comment}
+                placeholder="Comment..."
+                on:change={(event) =>
+                  modifyComment(redirect.code, redirect.comment)}
+              />
             </div>
           </li>
         {/each}

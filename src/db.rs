@@ -21,6 +21,7 @@ pub enum DatabaseAction {
     InsertUrl((String, String)),
     RemoveUrl(String),
     ModifyUrl((String, String)),
+    ModifyComment((String, String)),
     Log((String, String, String)),
     GetStats,
     GetLogs(String),
@@ -32,6 +33,7 @@ pub enum DatabaseReturn {
     InsertUrl,
     RemoveUrl,
     ModifyUrl,
+    ModifyComment,
     Log,
     GetStats(Vec<DatabaseStats>),
     GetLogs(Vec<DatabaseLog>),
@@ -150,6 +152,18 @@ impl Database {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
+                        DatabaseAction::ModifyComment((code, new_comment)) => {
+                            let query = "UPDATE redirects SET comment = ? WHERE redirect = ?;";
+                            let mut statement = connection.prepare(query).unwrap();
+                            statement
+                                .bind(&[(1, new_comment.as_str()), (2, code.as_str())][..])
+                                .unwrap();
+                            if let Err(e) = statement.next() {
+                                error!("Failed to modify URL: {:?}", e);
+                            } else if return_channel.send(DatabaseReturn::ModifyComment).is_err() {
+                                warn!("Return channel closed before response was sent");
+                            }
+                        }
                         DatabaseAction::Log((code, url, ip)) => {
                             let naive_date_time =
                                 chrono::offset::Local::now().format("%m/%d/%Y %T");
@@ -163,7 +177,8 @@ impl Database {
                             }
                         }
                         DatabaseAction::GetStats => {
-                            let query = "SELECT r.url, r.redirect, COUNT(l.id) AS log_count
+                            let query =
+                                "SELECT r.url, r.redirect, COUNT(l.id) AS log_count, r.comment
                                                 FROM redirects r
                                                 LEFT JOIN log l ON r.redirect = l.redirect
                                                 GROUP BY r.url, r.redirect;";
@@ -173,11 +188,13 @@ impl Database {
                                 if let Ok(url) = statement.read::<String, _>(0) {
                                     if let Ok(code) = statement.read::<String, _>(1) {
                                         if let Ok(clicks) = statement.read::<i64, _>(2) {
-                                            if let Ok(comment) = statement.read::<String, _>(3) {
+                                            if let Ok(comment) =
+                                                statement.read::<Option<String>, _>(3)
+                                            {
                                                 res.push(DatabaseStats {
                                                     url,
                                                     code,
-                                                    comment,
+                                                    comment: comment.unwrap_or("".to_string()),
                                                     visits: clicks as usize,
                                                 });
                                             } else {
@@ -297,6 +314,21 @@ impl Database {
         let (tx, rx) = oneshot::channel();
         if self.sender.send((request, tx)).is_ok() {
             if let Ok(DatabaseReturn::ModifyUrl) = rx.await {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn modify_comment(&self, code: String, comment: String) -> bool {
+        if check_string_injection(&code) {
+            warn!("Request failed injection test: {code} {comment}");
+            return false;
+        }
+        let request = DatabaseAction::ModifyComment((code, comment));
+        let (tx, rx) = oneshot::channel();
+        if self.sender.send((request, tx)).is_ok() {
+            if let Ok(DatabaseReturn::ModifyComment) = rx.await {
                 return true;
             }
         }
