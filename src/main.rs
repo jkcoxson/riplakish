@@ -10,6 +10,7 @@ use axum::{
 };
 
 use axum_client_ip::InsecureClientIp;
+use log::{info, warn};
 use rand::Rng;
 use statics::*;
 use tower_http::cors::CorsLayer;
@@ -21,6 +22,8 @@ mod statics;
 async fn main() {
     println!("Starting server");
     dotenv::dotenv().ok();
+    env_logger::init();
+    info!("Logger initialized");
 
     let database = db::Database::new();
 
@@ -89,6 +92,7 @@ async fn get_logs(
     State(database): State<db::Database>,
     Path(code): Path<String>,
 ) -> Json<Vec<db::DatabaseLog>> {
+    info!("Getting the logs for {code}");
     axum::Json(database.get_logs(code).await)
 }
 
@@ -101,6 +105,7 @@ async fn add_url(
         .take(4)
         .map(char::from)
         .collect();
+    info!("Attempting to insert {url} with code {s}");
     if database.insert_url(&url, &s).await {
         Ok((StatusCode::OK, s))
     } else {
@@ -109,6 +114,7 @@ async fn add_url(
 }
 
 async fn remove_url(Path(code): Path<String>, State(database): State<db::Database>) -> StatusCode {
+    warn!("Removing redirect code {code}");
     if database.remove_url(code).await {
         StatusCode::OK
     } else {
@@ -120,6 +126,7 @@ async fn modify_url(
     Path((code, new_url)): Path<(String, String)>,
     State(database): State<db::Database>,
 ) -> StatusCode {
+    info!("Updating {code} to new URL: {new_url}");
     if database.modify_url(code, new_url).await {
         StatusCode::OK
     } else {

@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use sqlite::State;
 use tokio::sync::{
@@ -40,6 +41,7 @@ pub enum DatabaseReturn {
 pub struct DatabaseStats {
     url: String,
     code: String,
+    comment: String,
     visits: usize,
 }
 
@@ -57,7 +59,7 @@ impl Database {
 
         // Make sure the tables exist
         // log, redirects
-        println!("Checking for required tables");
+        info!("Checking for required tables");
         let query = "SELECT name FROM sqlite_master WHERE type='table' AND name='log';";
         let mut exists = false;
         connection
@@ -81,7 +83,7 @@ impl Database {
             .expect("Unable to insert table");
         if !exists {
             let query =
-                "CREATE TABLE redirects (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, redirect TEXT);";
+                "CREATE TABLE redirects (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, redirect TEXT, comment TEXT);";
             connection.execute(query).unwrap();
         }
 
@@ -100,23 +102,23 @@ impl Database {
                                         if let Ok(s) = statement.read::<String, _>("url") {
                                             res = Some(DatabaseReturn::GetUrl(s));
                                         } else {
-                                            println!("Could not read statement as a string");
+                                            error!("Could not read statement as a string");
                                         }
                                     }
                                     if let Some(res) = res {
                                         if return_channel.send(res).is_err() {
-                                            println!(
+                                            error!(
                                                 "Return channel closed before response was sent"
                                             );
                                         }
                                     } else {
-                                        println!("Not found in database");
+                                        warn!("Not found in database");
                                     }
                                 } else {
-                                    println!("Unable to bind parameter")
+                                    error!("Unable to bind parameter")
                                 }
                             } else {
-                                println!("Unable to prepare query???");
+                                error!("Unable to prepare query???");
                             }
                         }
                         DatabaseAction::InsertUrl((url, code)) => {
@@ -126,7 +128,7 @@ impl Database {
                             if connection.execute(query).is_ok()
                                 && return_channel.send(DatabaseReturn::InsertUrl).is_err()
                             {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::RemoveUrl(code) => {
@@ -134,7 +136,7 @@ impl Database {
                             if connection.execute(query).is_ok()
                                 && return_channel.send(DatabaseReturn::RemoveUrl).is_err()
                             {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::ModifyUrl((code, new_url)) => {
@@ -144,7 +146,7 @@ impl Database {
                             if connection.execute(query).is_ok()
                                 && return_channel.send(DatabaseReturn::ModifyUrl).is_err()
                             {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::Log((code, url, ip)) => {
@@ -156,7 +158,7 @@ impl Database {
                             if connection.execute(query).is_ok()
                                 && return_channel.send(DatabaseReturn::Log).is_err()
                             {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::GetStats => {
@@ -170,23 +172,26 @@ impl Database {
                                 if let Ok(url) = statement.read::<String, _>(0) {
                                     if let Ok(code) = statement.read::<String, _>(1) {
                                         if let Ok(clicks) = statement.read::<i64, _>(2) {
-                                            res.push(DatabaseStats {
-                                                url,
-                                                code,
-                                                visits: clicks as usize,
-                                            });
+                                            if let Ok(comment) = statement.read::<String, _>(3) {
+                                                res.push(DatabaseStats {
+                                                    url,
+                                                    code,
+                                                    comment,
+                                                    visits: clicks as usize,
+                                                });
+                                            }
                                         } else {
-                                            println!("Could not read clicks as a number");
+                                            error!("Could not read clicks as a number");
                                         }
                                     } else {
-                                        println!("Could not read code as a string");
+                                        error!("Could not read code as a string");
                                     }
                                 } else {
-                                    println!("Could not read url as a string");
+                                    error!("Could not read url as a string");
                                 }
                             }
                             if return_channel.send(DatabaseReturn::GetStats(res)).is_err() {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::GetLogs(code) => {
@@ -205,7 +210,7 @@ impl Database {
                                 }
                             }
                             if return_channel.send(DatabaseReturn::GetLogs(res)).is_err() {
-                                println!("Return channel closed before response was sent");
+                                warn!("Return channel closed before response was sent");
                             }
                         }
                     }
@@ -286,7 +291,7 @@ impl Database {
     }
 
     pub async fn log(&self, code: String, url: String, ip: String) -> bool {
-        println!("{ip} visited {code}");
+        info!("{ip} visited {code}");
         if check_string_injection(&code) || check_string_injection(&ip) {
             return false;
         }
@@ -329,7 +334,7 @@ fn check_string_injection(s: &str) -> bool {
     for c in s.chars() {
         if !c.is_alphanumeric() {
             match c {
-                '.' | ':' | '/' => continue,
+                '.' | ':' | '/' | '-' | '_' => continue,
                 _ => return true,
             }
         }
@@ -367,6 +372,6 @@ mod tests {
     async fn stats() {
         dotenv::dotenv().ok();
         let db = Database::new();
-        assert!(db.get_stats().await.len() > 0);
+        assert!(!db.get_stats().await.is_empty());
     }
 }
