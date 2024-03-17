@@ -85,6 +85,7 @@ async fn base_url(State(database): State<db::Database>) -> String {
 }
 
 async fn get_stats(State(database): State<db::Database>) -> Json<Vec<db::DatabaseStats>> {
+    info!("Getting the stats...");
     axum::Json(database.get_stats().await)
 }
 

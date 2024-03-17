@@ -125,17 +125,18 @@ impl Database {
                             let query = format!(
                                 "INSERT INTO redirects (url, redirect) VALUES ('{url}', '{code}');"
                             );
-                            if connection.execute(query).is_ok()
-                                && return_channel.send(DatabaseReturn::InsertUrl).is_err()
-                            {
+
+                            if let Err(e) = connection.execute(query) {
+                                error!("Failed to insert URL: {:?}", e);
+                            } else if return_channel.send(DatabaseReturn::InsertUrl).is_err() {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
                         DatabaseAction::RemoveUrl(code) => {
                             let query = format!("DELETE FROM redirects WHERE redirect = '{code}';");
-                            if connection.execute(query).is_ok()
-                                && return_channel.send(DatabaseReturn::RemoveUrl).is_err()
-                            {
+                            if let Err(e) = connection.execute(query) {
+                                error!("Failed to remove URL: {:?}", e);
+                            } else if return_channel.send(DatabaseReturn::RemoveUrl).is_err() {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
@@ -143,9 +144,9 @@ impl Database {
                             let query = format!(
                                 "UPDATE redirects SET url = '{new_url}' WHERE redirect = '{code}';"
                             );
-                            if connection.execute(query).is_ok()
-                                && return_channel.send(DatabaseReturn::ModifyUrl).is_err()
-                            {
+                            if let Err(e) = connection.execute(query) {
+                                error!("Failed to modify URL: {:?}", e);
+                            } else if return_channel.send(DatabaseReturn::ModifyUrl).is_err() {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
@@ -155,9 +156,9 @@ impl Database {
                             let query = format!(
                                 "INSERT INTO log (redirect, ip, url, timestamp) VALUES ('{code}', '{ip}', '{url}', '{naive_date_time}');"
                             );
-                            if connection.execute(query).is_ok()
-                                && return_channel.send(DatabaseReturn::Log).is_err()
-                            {
+                            if let Err(e) = connection.execute(query) {
+                                error!("Failed to log request: {:?}", e);
+                            } else if return_channel.send(DatabaseReturn::Log).is_err() {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
@@ -179,6 +180,8 @@ impl Database {
                                                     comment,
                                                     visits: clicks as usize,
                                                 });
+                                            } else {
+                                                error!("Failed to read comment!");
                                             }
                                         } else {
                                             error!("Could not read clicks as a number");
@@ -205,8 +208,14 @@ impl Database {
                                     if let Ok(ip) = statement.read::<String, _>(4) {
                                         if let Ok(url) = statement.read::<String, _>(3) {
                                             res.push(DatabaseLog { url, timestamp, ip });
+                                        } else {
+                                            error!("Failed to read URL from log!");
                                         }
+                                    } else {
+                                        error!("Failed to read IP from log!");
                                     }
+                                } else {
+                                    error!("Failed to read timestamp from log!");
                                 }
                             }
                             if return_channel.send(DatabaseReturn::GetLogs(res)).is_err() {
@@ -236,6 +245,7 @@ impl Database {
 
     pub async fn get_url(&self, code: String) -> Option<String> {
         if check_string_injection(&code) {
+            warn!("Request failed injection test: {code}");
             return None;
         }
         let request = DatabaseAction::GetUrl(code.to_string());
@@ -250,6 +260,7 @@ impl Database {
 
     pub async fn insert_url(&self, url: &str, code: &str) -> bool {
         if check_string_injection(url) || check_string_injection(code) {
+            warn!("Request failed injection test: {url} {code}");
             return false;
         }
         let request = DatabaseAction::InsertUrl((url.to_string(), code.to_string()));
@@ -264,6 +275,7 @@ impl Database {
 
     pub async fn remove_url(&self, url: String) -> bool {
         if check_string_injection(&url) {
+            warn!("Request failed injection test: {url}");
             return false;
         }
         let request = DatabaseAction::RemoveUrl(url);
@@ -278,6 +290,7 @@ impl Database {
 
     pub async fn modify_url(&self, code: String, url: String) -> bool {
         if check_string_injection(&code) || check_string_injection(&url) {
+            warn!("Request failed injection test: {code} {url}");
             return false;
         }
         let request = DatabaseAction::ModifyUrl((code, url));
@@ -293,6 +306,7 @@ impl Database {
     pub async fn log(&self, code: String, url: String, ip: String) -> bool {
         info!("{ip} visited {code}");
         if check_string_injection(&code) || check_string_injection(&ip) {
+            warn!("Request failed injection test: {code} {ip}");
             return false;
         }
         let request = DatabaseAction::Log((code, url, ip));
