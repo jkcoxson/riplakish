@@ -271,13 +271,12 @@
         </div>
         <div class="setting">
           <label for="password">Password: </label>
-          <input type="text" id="pw" bind:value={password} />
+          <input type="password" id="pw" bind:value={password} />
         </div>
       </div>
       <br />
       <button on:click={login}>Login</button>
       <br />
-      <canvas id="qr-canvas"></canvas>
     </div>
   </div>
 
@@ -435,6 +434,17 @@
     border-radius: 8px; /* Rounded border */
     background-color: #2e3338; /* Dark background */
     color: #fff; /* Text color */
+    margin-bottom: 10px;
+    width: 80%; /* Set the width */
+    max-width: 30vw;
+  }
+
+  input[type="password"] {
+    padding: 10px;
+    border: 1px solid #4caf50; /* Green border */
+    border-radius: 8px; /* Rounded border */
+    background-color: #2e3338; /* Dark background */
+    color: #4caf50; /* Text color */
     margin-bottom: 10px;
     width: 80%; /* Set the width */
     max-width: 30vw;
