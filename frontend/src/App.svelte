@@ -16,11 +16,6 @@
   let username = "";
   let password = "";
 
-  // Check if X-Token cookie is set
-  function isLoggedIn() {
-    return document.cookie.includes("X-Token");
-  }
-
   // Function to handle login
   async function login() {
     const res = await fetch(`${API_URL}/admin/login`, {
@@ -38,10 +33,6 @@
     } else {
       alert("Invalid username or password");
     }
-  }
-
-  if (!isLoggedIn()) {
-    loginPopupVisible = true;
   }
 
   // Fetch redirects stats from /admin/stats API endpoint
