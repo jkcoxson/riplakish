@@ -5,8 +5,9 @@ use std::net::SocketAddr;
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, Method, StatusCode},
+    response::Response,
     routing::{delete, get, post},
-    Json, Router,
+    Router,
 };
 
 use axum_client_ip::InsecureClientIp;
@@ -34,6 +35,7 @@ async fn main() {
     // build our application with a single route
     let app = Router::new()
         .route("/admin", get(html))
+        .route("/admin/login", get(login))
         .route("/scripts.js", get(js))
         .route("/styles.css", get(css))
         .route("/r/:code", get(redirect))
@@ -86,70 +88,170 @@ async fn redirect(
     Err((StatusCode::NOT_FOUND, "404 Not Found\n-- Riplakish --"))
 }
 
+async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Response {
+    // Get the username and password
+    let username = headers.get("X-Username").and_then(|h| h.to_str().ok());
+    let password = headers.get("X-Password").and_then(|h| h.to_str().ok());
+
+    if username.is_none() || password.is_none() {
+        return Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Default::default())
+            .unwrap();
+    }
+
+    if username.unwrap() != database.username || password.unwrap() != database.password {
+        return Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Default::default())
+            .unwrap();
+    }
+
+    let token: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+
+    database.insert_token(token.clone()).await;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("X-Token", token)
+        .body(Default::default())
+        .unwrap()
+}
+
+#[inline]
+async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
+    let token = headers.get("X-Token").and_then(|h| h.to_str().ok());
+    if token.is_none() {
+        return false;
+    }
+    database.check_token(token.unwrap().to_string()).await
+}
+
 async fn base_url(State(database): State<db::Database>) -> String {
     database.base_url
 }
 
-async fn get_stats(State(database): State<db::Database>) -> Json<Vec<db::DatabaseStats>> {
+async fn get_stats(State(database): State<db::Database>, headers: HeaderMap) -> Response {
     info!("Getting the stats...");
-    axum::Json(database.get_stats().await)
+
+    if check_login(&database, &headers).await {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(
+                serde_json::to_string(&database.get_stats().await)
+                    .unwrap()
+                    .into(),
+            )
+            .unwrap()
+    } else {
+        Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Default::default())
+            .unwrap()
+    }
 }
 
 async fn get_logs(
     State(database): State<db::Database>,
     Path(code): Path<String>,
-) -> Json<Vec<db::DatabaseLog>> {
+    headers: HeaderMap,
+) -> Response {
     info!("Getting the logs for {code}");
-    axum::Json(database.get_logs(code).await)
+
+    if check_login(&database, &headers).await {
+        Response::builder()
+            .status(StatusCode::OK)
+            .body(
+                serde_json::to_string(&database.get_logs(code).await)
+                    .unwrap()
+                    .into(),
+            )
+            .unwrap()
+    } else {
+        Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Default::default())
+            .unwrap()
+    }
 }
 
 async fn add_url(
     Path(url): Path<String>,
     State(database): State<db::Database>,
+    headers: HeaderMap,
 ) -> Result<(StatusCode, String), StatusCode> {
-    let s: String = rand::thread_rng()
-        .sample_iter(&rand::distributions::Alphanumeric)
-        .take(4)
-        .map(char::from)
-        .collect();
-    info!("Attempting to insert {url} with code {s}");
-    if database.insert_url(&url, &s).await {
-        Ok((StatusCode::OK, s))
+    if check_login(&database, &headers).await {
+        let s: String = rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(4)
+            .map(char::from)
+            .collect();
+        info!("Attempting to insert {url} with code {s}");
+        if database.insert_url(&url, &s).await {
+            Ok((StatusCode::OK, s))
+        } else {
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     } else {
-        Err(StatusCode::INTERNAL_SERVER_ERROR)
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
-async fn remove_url(Path(code): Path<String>, State(database): State<db::Database>) -> StatusCode {
+async fn remove_url(
+    Path(code): Path<String>,
+    State(database): State<db::Database>,
+    headers: HeaderMap,
+) -> StatusCode {
     warn!("Removing redirect code {code}");
-    if database.remove_url(code).await {
-        StatusCode::OK
+
+    if check_login(&database, &headers).await {
+        if database.remove_url(code).await {
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        }
     } else {
-        StatusCode::NOT_FOUND
+        StatusCode::UNAUTHORIZED
     }
 }
 
 async fn modify_url(
     Path((code, new_url)): Path<(String, String)>,
     State(database): State<db::Database>,
+    headers: HeaderMap,
 ) -> StatusCode {
     info!("Updating {code} to new URL: {new_url}");
-    if database.modify_url(code, new_url).await {
-        StatusCode::OK
+
+    if check_login(&database, &headers).await {
+        if database.modify_url(code, new_url).await {
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        }
     } else {
-        StatusCode::NOT_FOUND
+        StatusCode::UNAUTHORIZED
     }
 }
 
 async fn modify_comment(
     Path((code, new_comment)): Path<(String, String)>,
     State(database): State<db::Database>,
+    headers: HeaderMap,
 ) -> StatusCode {
     info!("Updating {code} to new comment: {new_comment}");
-    if database.modify_comment(code, new_comment).await {
-        StatusCode::OK
+
+    if check_login(&database, &headers).await {
+        if database.modify_comment(code, new_comment).await {
+            StatusCode::OK
+        } else {
+            StatusCode::NOT_FOUND
+        }
     } else {
-        StatusCode::NOT_FOUND
+        StatusCode::UNAUTHORIZED
     }
 }
 

@@ -13,6 +13,8 @@ pub struct Database {
     sender: UnboundedSender<(DatabaseAction, Sender<DatabaseReturn>)>,
     pub behind_traefik: bool,
     pub base_url: String,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,8 @@ pub enum DatabaseAction {
     Log((String, String, String)),
     GetStats,
     GetLogs(String),
+    InsertToken(String),
+    CheckToken(String),
 }
 
 #[derive(Debug)]
@@ -37,6 +41,8 @@ pub enum DatabaseReturn {
     Log,
     GetStats(Vec<DatabaseStats>),
     GetLogs(Vec<DatabaseLog>),
+    InsertToken,
+    CheckToken(bool),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +62,8 @@ pub struct DatabaseLog {
 
 impl Database {
     pub fn new() -> Self {
+        let username = std::env::var("USERNAME").expect("USERNAME environment variable not set");
+        let password = std::env::var("PASSWORD").expect("PASSWORD environment variable not set");
         let filename = std::env::var("SQLITE_PATH").unwrap_or("riplakish.db".to_string());
         let connection = sqlite::open(filename).expect("Failed to read to database");
 
@@ -86,6 +94,19 @@ impl Database {
         if !exists {
             let query =
                 "CREATE TABLE redirects (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, redirect TEXT, comment TEXT);";
+            connection.execute(query).unwrap();
+        }
+        let query = "SELECT name FROM sqlite_master WHERE type='table' AND name='tokens';";
+        let mut exists = false;
+        connection
+            .iterate(query, |_| {
+                exists = true;
+                true
+            })
+            .expect("Unable to insert table");
+        if !exists {
+            let query =
+                "CREATE TABLE tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT, expiration DATETIME);";
             connection.execute(query).unwrap();
         }
 
@@ -239,6 +260,61 @@ impl Database {
                                 warn!("Return channel closed before response was sent");
                             }
                         }
+                        DatabaseAction::InsertToken(token) => {
+                            // Get the current time plus one hour
+                            let expires = chrono::offset::Local::now()
+                                .checked_add_signed(chrono::Duration::hours(1))
+                                .unwrap();
+
+                            // Insert the token into the database
+                            let query = "INSERT INTO tokens (token, expiration) VALUES (?, ?);";
+                            let mut statement = connection.prepare(query).unwrap();
+                            statement
+                                .bind(&[(1, token.as_str()), (2, &expires.to_rfc3339())][..])
+                                .unwrap();
+                            if let Err(e) = statement.next() {
+                                error!("Failed to insert token: {:?}", e);
+                            }
+                            if return_channel.send(DatabaseReturn::InsertToken).is_err() {
+                                warn!("Return channel closed before response was sent");
+                            }
+                        }
+                        DatabaseAction::CheckToken(token) => {
+                            println!("Checking token {token}");
+                            let query = "SELECT * FROM tokens WHERE token = ?;";
+                            let mut statement = connection.prepare(query).unwrap();
+                            statement.bind((1, token.as_str())).unwrap();
+                            if let Ok(State::Row) = statement.next() {
+                                if let Ok(expires) = statement.read::<String, _>(2) {
+                                    if let Ok(expires) =
+                                        chrono::DateTime::parse_from_rfc3339(expires.as_str())
+                                    {
+                                        if expires > chrono::offset::Local::now() {
+                                            if return_channel
+                                                .send(DatabaseReturn::CheckToken(true))
+                                                .is_err()
+                                            {
+                                                warn!("Return channel closed before response was sent");
+                                            }
+                                        } else {
+                                            info!("Expired token was used");
+
+                                            // Delete old token
+                                            let query = "DELETE FROM tokens WHERE token = ?;";
+                                            let mut statement = connection.prepare(query).unwrap();
+                                            statement.bind((1, token.as_str())).unwrap();
+                                            if let Err(e) = statement.next() {
+                                                error!("Failed to delete token: {:?}", e);
+                                            }
+                                        }
+                                    } else {
+                                        error!("Timestamp was unparse-able for token {token}");
+                                    }
+                                } else {
+                                    error!("Failed to read expiration from token {token}");
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -255,6 +331,8 @@ impl Database {
             sender: tx,
             behind_traefik,
             base_url,
+            username,
+            password,
         }
     }
 
@@ -374,6 +452,36 @@ impl Database {
         }
         Vec::new()
     }
+
+    pub async fn insert_token(&self, token: String) -> bool {
+        if check_string_injection(&token) {
+            warn!("Request failed injection test: {token}");
+            return false;
+        }
+        let request = DatabaseAction::InsertToken(token);
+        let (tx, rx) = oneshot::channel();
+        if self.sender.send((request, tx)).is_ok() {
+            if let Ok(DatabaseReturn::InsertToken) = rx.await {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn check_token(&self, token: String) -> bool {
+        if check_string_injection(&token) {
+            warn!("Request failed injection test: {token}");
+            return false;
+        }
+        let request = DatabaseAction::CheckToken(token);
+        let (tx, rx) = oneshot::channel();
+        if self.sender.send((request, tx)).is_ok() {
+            if let Ok(DatabaseReturn::CheckToken(result)) = rx.await {
+                return result;
+            }
+        }
+        false
+    }
 }
 
 fn check_string_injection(s: &str) -> bool {
@@ -419,5 +527,14 @@ mod tests {
         dotenv::dotenv().ok();
         let db = Database::new();
         assert!(!db.get_stats().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn login() {
+        dotenv::dotenv().ok();
+        env_logger::init();
+        let db = Database::new();
+        // assert!(db.insert_token("asdf".to_string()).await);
+        assert!(db.check_token("asdf".to_string()).await);
     }
 }
