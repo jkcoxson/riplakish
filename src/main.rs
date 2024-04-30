@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, Method, StatusCode},
+    http::{header::SET_COOKIE, HeaderMap, Method, StatusCode},
     response::Response,
     routing::{delete, get, post},
     Router,
@@ -29,11 +29,12 @@ async fn main() {
     let database = db::Database::new();
 
     let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_origin(tower_http::cors::Any);
 
     // build our application with a single route
     let app = Router::new()
+        .layer(cors)
         .route("/admin", get(html))
         .route("/admin/login", get(login))
         .route("/scripts.js", get(js))
@@ -50,8 +51,7 @@ async fn main() {
             post(modify_comment),
         )
         .fallback(fallback)
-        .with_state(database)
-        .layer(cors);
+        .with_state(database);
 
     let port = std::env::var("RIPLAKISH_PORT").unwrap_or("3009".to_string());
 
@@ -117,18 +117,24 @@ async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Resp
 
     Response::builder()
         .status(StatusCode::OK)
-        .header("X-Token", token)
+        .header(SET_COOKIE, format!("X-Token={token}"))
         .body(Default::default())
         .unwrap()
 }
 
 #[inline]
 async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
-    let token = headers.get("X-Token").and_then(|h| h.to_str().ok());
-    if token.is_none() {
-        return false;
+    let cookies = headers.get("cookie").and_then(|h| h.to_str().ok());
+    if let Some(cookies) = cookies {
+        let cookies = cookies.split(";").collect::<Vec<&str>>();
+        for cookie in cookies {
+            if cookie.starts_with("X-Token=") {
+                let token = cookie.split("=").collect::<Vec<&str>>()[1];
+                return database.check_token(token.to_string()).await;
+            }
+        }
     }
-    database.check_token(token.unwrap().to_string()).await
+    false
 }
 
 async fn base_url(State(database): State<db::Database>) -> String {

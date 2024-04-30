@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import QRious from "qrious";
 
-  const API_URL = ""; // change for npm run dev
+  const API_URL = "http://10.7.0.6:3009"; // change for npm run dev
   let BASE_URL = "127.0.0.1";
 
   let redirects = [];
@@ -12,9 +12,46 @@
   let logEvents = [];
   let staticQr = "";
 
+  let loginPopupVisible = false;
+  let username = "";
+  let password = "";
+
+  // Check if X-Token cookie is set
+  function isLoggedIn() {
+    return document.cookie.includes("X-Token");
+  }
+
+  // Function to handle login
+  async function login() {
+    const res = await fetch(`${API_URL}/admin/login`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Username": username,
+        "X-Password": password,
+      },
+    });
+    if (res.status === 200) {
+      // Close the popup
+      loginPopupVisible = false;
+      await fetchRedirects();
+    } else {
+      alert("Invalid username or password");
+    }
+  }
+
+  if (!isLoggedIn()) {
+    loginPopupVisible = true;
+  }
+
   // Fetch redirects stats from /admin/stats API endpoint
   async function fetchRedirects() {
     const res = await fetch(`${API_URL}/admin/stats`);
+    if (res.status === 401) {
+      // Handle unauthorized access
+      loginPopupVisible = true;
+      return;
+    }
     redirects = await res.json();
   }
 
@@ -183,7 +220,7 @@
                   openPopup(`${BASE_URL}/r/${redirect.code}`, false)}
                 >QR Code</button
               >
-              <hr>
+              <hr />
               <input
                 type="text"
                 bind:value={redirect.comment}
@@ -221,6 +258,28 @@
       <button on:click={() => openPopup(staticQr, true)}>Generate</button>
     </div>
   {/if}
+
+  <div class="popup" style="display: {loginPopupVisible ? 'block' : 'none'}">
+    <div class="popup-content">
+      <h2>Login</h2>
+      <br />
+      <!-- Inputs for login -->
+      <div class="popup-settings">
+        <div class="setting">
+          <label for="username">Username:</label>
+          <input type="text" id="usn" bind:value={username} />
+        </div>
+        <div class="setting">
+          <label for="password">Password: </label>
+          <input type="text" id="pw" bind:value={password} />
+        </div>
+      </div>
+      <br />
+      <button on:click={login}>Login</button>
+      <br />
+      <canvas id="qr-canvas"></canvas>
+    </div>
+  </div>
 
   <div class="popup" style="display: {popupVisible ? 'block' : 'none'}">
     <div class="popup-content">
