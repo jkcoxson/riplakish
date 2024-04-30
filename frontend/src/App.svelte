@@ -67,6 +67,11 @@
 
     // Fetch log events for the selected redirect
     const logRes = await fetch(`${API_URL}/admin/logs/${code}`);
+    if (logRes.status === 401) {
+      // Handle unauthorized access
+      loginPopupVisible = true;
+      return;
+    }
     logEvents = await logRes.json();
   }
 
