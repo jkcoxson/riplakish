@@ -4,7 +4,10 @@ use std::net::SocketAddr;
 
 use axum::{
     extract::{Path, State},
-    http::{header::SET_COOKIE, HeaderMap, Method, StatusCode},
+    http::{
+        header::{CONTENT_TYPE, SET_COOKIE},
+        HeaderMap, HeaderName, Method, StatusCode,
+    },
     response::Response,
     routing::{delete, get, post},
     Router,
@@ -30,11 +33,16 @@ async fn main() {
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_origin(tower_http::cors::Any);
+        .allow_origin(tower_http::cors::Any)
+        .allow_headers([
+            CONTENT_TYPE,
+            HeaderName::from_static("x-password"),
+            HeaderName::from_static("x-username"),
+            HeaderName::from_static("x-token"),
+        ]);
 
     // build our application with a single route
     let app = Router::new()
-        .layer(cors)
         .route("/admin", get(html))
         .route("/admin/login", get(login))
         .route("/scripts.js", get(js))
@@ -51,6 +59,7 @@ async fn main() {
             post(modify_comment),
         )
         .fallback(fallback)
+        .layer(cors)
         .with_state(database);
 
     let port = std::env::var("RIPLAKISH_PORT").unwrap_or("3009".to_string());
@@ -129,10 +138,10 @@ async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Resp
 async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
     let cookies = headers.get("cookie").and_then(|h| h.to_str().ok());
     if let Some(cookies) = cookies {
-        let cookies = cookies.split(";").collect::<Vec<&str>>();
+        let cookies = cookies.split(';').collect::<Vec<&str>>();
         for cookie in cookies {
             if cookie.starts_with("X-Token=") {
-                let token = cookie.split("=").collect::<Vec<&str>>()[1];
+                let token = cookie.split('=').collect::<Vec<&str>>()[1];
                 let token = token.replace(" SameSite", "");
                 return database.check_token(token.trim().to_string()).await;
             }

@@ -1,9 +1,11 @@
 <!-- App.svelte -->
 <script>
-  import { onMount } from "svelte";
-  import QRious from "qrious";
+  import Qr from "./lib/Qr.svelte";
+  import Login from "./lib/Login.svelte"
 
-  const API_URL = ""; // change for npm run dev
+  import { onMount } from "svelte";
+
+  const API_URL = "http://bible.org:8083"; // change for npm run dev
   let BASE_URL = "127.0.0.1";
 
   let redirects = [];
@@ -15,6 +17,10 @@
   let loginPopupVisible = false;
   let username = "";
   let password = "";
+
+  let popupVisible = false;
+  let popupUrl = "";
+  let popupEdit = false;
 
   // Function to handle login
   async function login() {
@@ -97,54 +103,6 @@
     fetchRedirects();
   }
 
-  let popupVisible = false;
-  let qrSize = 100;
-  let qrColor = "#000000";
-  let qrBackgroundColor = "#ffffff";
-  let qrTransparent = false;
-  let qrValue = "";
-  let qrEdit = false;
-
-  // Function to open the QR code settings popup
-  function openPopup(url, edit) {
-    qrValue = url;
-    qrEdit = edit;
-    popupVisible = true;
-    renderQRCode();
-  }
-
-  // Function to customize QR code settings and download
-  function customizeAndDownload() {
-    const qrCanvas = document.getElementById("qr-canvas");
-    const qr = new QRious({
-      value: qrValue,
-      foreground: qrColor,
-      background: qrBackgroundColor,
-      backgroundAlpha: qrTransparent ? 0 : 1,
-      size: qrSize,
-    });
-
-    // Download the customized QR code
-    const link = document.createElement("a");
-    link.href = qr.toDataURL();
-    link.download = `redirect_qr.png`;
-    link.click();
-
-    popupVisible = false; // Close the popup after downloading
-  }
-
-  function renderQRCode() {
-    const qrCanvas = document.getElementById("qr-canvas");
-    const qr = new QRious({
-      value: qrValue,
-      foreground: qrColor,
-      background: qrBackgroundColor,
-      backgroundAlpha: qrTransparent ? 0 : 1,
-      size: qrSize,
-      element: qrCanvas,
-    });
-  }
-
   // Fetch redirects stats when the component mounts
   onMount(() => {
     fetchRedirects();
@@ -212,9 +170,11 @@
                 >Delete</button
               >
               <button
-                on:click={() =>
-                  openPopup(`${BASE_URL}/r/${redirect.code}`, false)}
-                >QR Code</button
+                on:click={() => {
+                  popupVisible = true;
+                  popupUrl = `${BASE_URL}/r/${redirect.code}`;
+                  popupEdit = false;
+                }}>QR Code</button
               >
               <hr />
               <input
@@ -251,7 +211,13 @@
         "points". Scans will not be tracked.
       </p>
       <input type="text" bind:value={staticQr} placeholder="Enter URL" />
-      <button on:click={() => openPopup(staticQr, true)}>Generate</button>
+      <button
+        on:click={() => {
+          popupVisible = true;
+          popupUrl = staticQr;
+          popupEdit = true;
+        }}>Generate</button
+      >
     </div>
   {/if}
 
@@ -281,66 +247,7 @@
   </div>
 
   <div class="popup" style="display: {popupVisible ? 'block' : 'none'}">
-    <div class="popup-content">
-      <h2>Customize QR Code</h2>
-      <br />
-      <!-- Include input fields or sliders to configure QR code properties -->
-      <div class="popup-settings">
-        <div class="setting">
-          <label for="qrSize">Size:</label>
-          <input
-            type="number"
-            id="qrSize"
-            bind:value={qrSize}
-            on:change={renderQRCode}
-          />
-        </div>
-        <div class="setting">
-          <label for="qrColor">Color:</label>
-          <input
-            type="color"
-            id="qrColor"
-            bind:value={qrColor}
-            on:change={renderQRCode}
-          />
-        </div>
-        <div class="setting">
-          <label for="qrBackgroundColor">Background Color:</label>
-          <input
-            type="color"
-            id="qrBackgroundColor"
-            bind:value={qrBackgroundColor}
-            on:change={renderQRCode}
-          />
-        </div>
-        <div class="setting">
-          <label for="qrTransparent">Transparent Background:</label>
-          <input
-            type="checkbox"
-            id="qrTransparent"
-            bind:checked={qrTransparent}
-            on:change={renderQRCode}
-          />
-        </div>
-        {#if qrEdit}
-          <div class="setting">
-            <label for="qrValue">QR Code Value:</label>
-            <input
-              type="text"
-              id="qrValue"
-              bind:value={qrValue}
-              on:input={renderQRCode}
-            />
-          </div>
-        {/if}
-      </div>
-      <!-- Add more customizable options for QR code -->
-      <br />
-      <button on:click={customizeAndDownload}>Download QR Code</button>
-      <button on:click={() => (popupVisible = false)}>Close</button>
-      <br />
-      <canvas id="qr-canvas"></canvas>
-    </div>
+    <Qr bind:popupVisible qrValue={popupUrl} qrEdit={popupEdit} />
   </div>
 </main>
 
@@ -506,9 +413,5 @@
 
   .setting label {
     margin-right: 10px;
-  }
-
-  canvas {
-    margin: 10px;
   }
 </style>
