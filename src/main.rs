@@ -43,14 +43,19 @@ async fn main() {
         .route("/admin/add/*url", post(add_url))
         .route("/admin/remove/*url", delete(remove_url))
         .route("/admin/modify/:code/*new_url", post(modify_url))
-        .route("/admin/modify-comment/:code/*new_comment", post(modify_comment))
+        .route(
+            "/admin/modify-comment/:code/*new_comment",
+            post(modify_comment),
+        )
         .fallback(fallback)
         .with_state(database)
         .layer(cors);
 
     let port = std::env::var("RIPLAKISH_PORT").unwrap_or("3009".to_string());
 
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
+        .await
+        .unwrap();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
