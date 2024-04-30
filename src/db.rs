@@ -314,6 +314,15 @@ impl Database {
                                     error!("Failed to read expiration from token {token}");
                                 }
                             }
+                            // Clear old expired tokens
+                            let query = "DELETE FROM tokens WHERE expiration < ?;";
+                            let mut statement = connection.prepare(query).unwrap();
+                            statement
+                                .bind((1, chrono::offset::Local::now().to_rfc3339().as_str()))
+                                .unwrap();
+                            if let Err(e) = statement.next() {
+                                error!("Failed to delete expired tokens: {:?}", e);
+                            }
                         }
                     }
                 }
