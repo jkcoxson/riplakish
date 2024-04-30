@@ -117,7 +117,10 @@ async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Resp
 
     Response::builder()
         .status(StatusCode::OK)
-        .header(SET_COOKIE, format!("X-Token={token}"))
+        .header(
+            SET_COOKIE,
+            format!("X-Token={token}; SameSite=Strict; HttpOnly"),
+        )
         .body(Default::default())
         .unwrap()
 }
@@ -130,7 +133,8 @@ async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
         for cookie in cookies {
             if cookie.starts_with("X-Token=") {
                 let token = cookie.split("=").collect::<Vec<&str>>()[1];
-                return database.check_token(token.to_string()).await;
+                let token = token.replace(" SameSite", "");
+                return database.check_token(token.trim().to_string()).await;
             }
         }
     }

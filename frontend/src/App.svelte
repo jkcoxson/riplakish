@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import QRious from "qrious";
 
-  const API_URL = "http://10.7.0.6:3009"; // change for npm run dev
+  const API_URL = ""; // change for npm run dev
   let BASE_URL = "127.0.0.1";
 
   let redirects = [];
@@ -267,6 +267,10 @@
   <div class="popup" style="display: {loginPopupVisible ? 'block' : 'none'}">
     <div class="popup-content">
       <h2>Login</h2>
+      <p>
+        This site uses cookies to store your login token. By logging in, you
+        accept cookies. Don't worry, they don't have raisins.
+      </p>
       <br />
       <!-- Inputs for login -->
       <div class="popup-settings">
