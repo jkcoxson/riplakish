@@ -9,15 +9,13 @@
   let BASE_URL = "127.0.0.1";
 
   let redirects = [];
+  let possibleDeletes = [];
   let selectedRedirect = null;
   let newRedirectUrl = "";
   let logEvents = [];
   let staticQr = "";
 
   let loginPopupVisible = false;
-  let username = "";
-  let password = "";
-
   let popupVisible = false;
   let popupUrl = "";
   let popupEdit = false;
@@ -76,9 +74,22 @@
 
   // Delete a redirect
   async function removeRedirect(url) {
-    await fetch(`${API_URL}/admin/remove/${url}`, { method: "DELETE" });
-    // Update the UI or perform any necessary actions after removing
-    fetchRedirects();
+    if (possibleDeletes.includes(url)) {
+      await fetch(`${API_URL}/admin/remove/${url}`, { method: "DELETE" });
+      // Update the UI or perform any necessary actions after removing
+      fetchRedirects();
+    } else {
+      possibleDeletes.push(url);
+      possibleDeletes = possibleDeletes;
+      // Remove from possibleDeletes in 3 seconds
+      setTimeout(() => {
+        const index = possibleDeletes.indexOf(url);
+        if (index > -1) {
+          possibleDeletes.splice(index, 1);
+          possibleDeletes = possibleDeletes;
+        }
+      }, 3000);
+    }
   }
 
   // Create a new redirect
@@ -152,7 +163,7 @@
                 >View Details</button
               >
               <button on:click={() => removeRedirect(redirect.code)}
-                >Delete</button
+                >{possibleDeletes.includes(redirect.code) ? "Confirm Delete" : "Delete"}</button
               >
               <button
                 on:click={() => {
@@ -207,11 +218,7 @@
   {/if}
 
   <div class="popup" style="display: {loginPopupVisible ? 'block' : 'none'}">
-    <Login
-      API_URL={API_URL}
-      bind:loginPopupVisible
-      fetchRedirects
-    />
+    <Login {API_URL} bind:loginPopupVisible fetchRedirects />
   </div>
 
   <div class="popup" style="display: {popupVisible ? 'block' : 'none'}">
