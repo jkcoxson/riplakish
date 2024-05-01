@@ -81,18 +81,23 @@ async fn redirect(
     headers: HeaderMap,
     insecure_ip: InsecureClientIp,
 ) -> Result<axum::response::Redirect, (StatusCode, &'static str)> {
-    if let Some(redirect) = database.get_url(code.clone()) {
-        let ip = if database.behind_traefik {
-            if let Some(h) = headers.get("X-Forwarded-For") {
-                h.to_str().unwrap_or("unknown").to_string()
+    let moved_db = database.clone();
+    let moved_code = code.clone();
+    if let Ok(redirect) = tokio::task::spawn_blocking(move || moved_db.get_url(moved_code)).await {
+        if let Some(redirect) = redirect {
+            let ip = if database.behind_traefik {
+                if let Some(h) = headers.get("X-Forwarded-For") {
+                    h.to_str().unwrap_or("unknown").to_string()
+                } else {
+                    "unknown".to_string()
+                }
             } else {
-                "unknown".to_string()
-            }
-        } else {
-            insecure_ip.0.to_string()
-        };
-        database.log(code, redirect.clone(), ip);
-        return Ok(axum::response::Redirect::to(redirect.as_str()));
+                insecure_ip.0.to_string()
+            };
+            let moved_redirect = redirect.clone();
+            tokio::task::spawn_blocking(move || database.log(code, moved_redirect, ip));
+            return Ok(axum::response::Redirect::to(redirect.as_str()));
+        }
     }
     Err((StatusCode::NOT_FOUND, "404 Not Found\n-- Riplakish --"))
 }
@@ -122,7 +127,8 @@ async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Resp
         .map(char::from)
         .collect();
 
-    database.insert_token(token.clone());
+    let moved_token = token.clone();
+    tokio::task::spawn_blocking(move || database.insert_token(moved_token));
 
     Response::builder()
         .status(StatusCode::OK)
@@ -143,7 +149,15 @@ async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
             if cookie.starts_with("X-Token=") {
                 let token = cookie.split('=').collect::<Vec<&str>>()[1];
                 let token = token.replace(" SameSite", "");
-                return database.check_token(token.trim().to_string());
+
+                let moved_db = database.clone();
+                if let Ok(yay) = tokio::task::spawn_blocking(move || {
+                    moved_db.check_token(token.trim().to_string())
+                })
+                .await
+                {
+                    return yay;
+                }
             }
         }
     }
@@ -158,16 +172,17 @@ async fn get_stats(State(database): State<db::Database>, headers: HeaderMap) -> 
     info!("Getting the stats...");
 
     if check_login(&database, &headers).await {
-        Response::builder()
-            .status(StatusCode::OK)
-            .body(serde_json::to_string(&database.get_stats()).unwrap().into())
-            .unwrap()
-    } else {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(Default::default())
-            .unwrap()
+        if let Ok(stats) = tokio::task::spawn_blocking(move || database.get_stats()).await {
+            return Response::builder()
+                .status(StatusCode::OK)
+                .body(serde_json::to_string(&stats).unwrap().into())
+                .unwrap();
+        }
     }
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(Default::default())
+        .unwrap()
 }
 
 async fn get_logs(
@@ -178,20 +193,17 @@ async fn get_logs(
     info!("Getting the logs for {code}");
 
     if check_login(&database, &headers).await {
-        Response::builder()
-            .status(StatusCode::OK)
-            .body(
-                serde_json::to_string(&database.get_logs(code))
-                    .unwrap()
-                    .into(),
-            )
-            .unwrap()
-    } else {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(Default::default())
-            .unwrap()
+        if let Ok(logs) = tokio::task::spawn_blocking(move || database.get_logs(code)).await {
+            return Response::builder()
+                .status(StatusCode::OK)
+                .body(serde_json::to_string(&logs).unwrap().into())
+                .unwrap();
+        }
     }
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(Default::default())
+        .unwrap()
 }
 
 async fn add_url(
@@ -206,10 +218,18 @@ async fn add_url(
             .map(char::from)
             .collect();
         info!("Attempting to insert {url} with code {s}");
-        if database.insert_url(&url, &s) {
-            Ok((StatusCode::OK, s))
+        if let Ok(res) = tokio::task::spawn_blocking(move || {
+            if database.insert_url(&url, &s) {
+                Ok((StatusCode::OK, s))
+            } else {
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        })
+        .await
+        {
+            return res;
         } else {
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     } else {
         Err(StatusCode::UNAUTHORIZED)
@@ -224,10 +244,14 @@ async fn remove_url(
     warn!("Removing redirect code {code}");
 
     if check_login(&database, &headers).await {
-        if database.remove_url(code) {
-            StatusCode::OK
+        if let Ok(res) = tokio::task::spawn_blocking(move || database.remove_url(code)).await {
+            if res {
+                StatusCode::OK
+            } else {
+                StatusCode::NOT_FOUND
+            }
         } else {
-            StatusCode::NOT_FOUND
+            StatusCode::INTERNAL_SERVER_ERROR
         }
     } else {
         StatusCode::UNAUTHORIZED
@@ -242,10 +266,16 @@ async fn modify_url(
     info!("Updating {code} to new URL: {new_url}");
 
     if check_login(&database, &headers).await {
-        if database.modify_url(code, new_url) {
-            StatusCode::OK
+        if let Ok(res) =
+            tokio::task::spawn_blocking(move || database.modify_url(code, new_url)).await
+        {
+            if res {
+                StatusCode::OK
+            } else {
+                StatusCode::NOT_FOUND
+            }
         } else {
-            StatusCode::NOT_FOUND
+            StatusCode::INTERNAL_SERVER_ERROR
         }
     } else {
         StatusCode::UNAUTHORIZED
@@ -260,10 +290,16 @@ async fn modify_comment(
     info!("Updating {code} to new comment: {new_comment}");
 
     if check_login(&database, &headers).await {
-        if database.modify_comment(code, new_comment) {
-            StatusCode::OK
+        if let Ok(res) =
+            tokio::task::spawn_blocking(move || database.modify_comment(code, new_comment)).await
+        {
+            if res {
+                StatusCode::OK
+            } else {
+                StatusCode::NOT_FOUND
+            }
         } else {
-            StatusCode::NOT_FOUND
+            StatusCode::INTERNAL_SERVER_ERROR
         }
     } else {
         StatusCode::UNAUTHORIZED
