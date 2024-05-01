@@ -1,3 +1,4 @@
+#![cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 // Jackson Coxson
 
 use std::net::SocketAddr;
