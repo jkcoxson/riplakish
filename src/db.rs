@@ -97,7 +97,7 @@ impl Database {
 
     // Getters haha just like Java
 
-    pub async fn get_url(&self, code: String) -> Option<String> {
+    pub fn get_url(&self, code: String) -> Option<String> {
         if check_string_injection(&code) {
             warn!("Request failed injection test: {code}");
             return None;
@@ -141,7 +141,7 @@ impl Database {
         }
     }
 
-    pub async fn insert_url(&self, url: &str, code: &str) -> bool {
+    pub fn insert_url(&self, url: &str, code: &str) -> bool {
         if check_string_injection(url) || check_string_injection(code) {
             warn!("Request failed injection test: {url} {code}");
             return false;
@@ -163,7 +163,7 @@ impl Database {
         }
     }
 
-    pub async fn remove_url(&self, code: String) -> bool {
+    pub fn remove_url(&self, code: String) -> bool {
         if check_string_injection(&code) {
             warn!("Request failed injection test: {code}");
             return false;
@@ -185,7 +185,7 @@ impl Database {
         }
     }
 
-    pub async fn modify_url(&self, code: String, url: String) -> bool {
+    pub fn modify_url(&self, code: String, url: String) -> bool {
         if check_string_injection(&code) || check_string_injection(&url) {
             warn!("Request failed injection test: {code} {url}");
             return false;
@@ -207,7 +207,7 @@ impl Database {
         }
     }
 
-    pub async fn modify_comment(&self, code: String, comment: String) -> bool {
+    pub fn modify_comment(&self, code: String, comment: String) -> bool {
         if check_string_injection(&code) {
             warn!("Request failed injection test: {code} {comment}");
             return false;
@@ -242,7 +242,7 @@ impl Database {
         }
     }
 
-    pub async fn log(&self, code: String, url: String, ip: String) -> bool {
+    pub fn log(&self, code: String, url: String, ip: String) -> bool {
         info!("{ip} visited {code}");
         if check_string_injection(&code) || check_string_injection(&ip) {
             warn!("Request failed injection test: {code} {ip}");
@@ -266,7 +266,7 @@ impl Database {
         }
     }
 
-    pub async fn get_stats(&self) -> Vec<DatabaseStats> {
+    pub fn get_stats(&self) -> Vec<DatabaseStats> {
         let connection = match sqlite::open(&self.filename) {
             Ok(conn) => conn,
             Err(err) => {
@@ -315,7 +315,7 @@ impl Database {
         res
     }
 
-    pub async fn get_logs(&self, code: String) -> Vec<DatabaseLog> {
+    pub fn get_logs(&self, code: String) -> Vec<DatabaseLog> {
         let connection = match sqlite::open(&self.filename) {
             Ok(conn) => conn,
             Err(err) => {
@@ -356,7 +356,7 @@ impl Database {
         res
     }
 
-    pub async fn insert_token(&self, token: String) -> bool {
+    pub fn insert_token(&self, token: String) -> bool {
         if check_string_injection(&token) {
             warn!("Request failed injection test: {token}");
             return false;
@@ -395,7 +395,7 @@ impl Database {
         }
     }
 
-    pub async fn check_token(&self, token: String) -> bool {
+    pub fn check_token(&self, token: String) -> bool {
         if check_string_injection(&token) {
             warn!("Request failed injection test: {token}");
             return false;
@@ -499,29 +499,26 @@ mod tests {
     async fn f1() {
         dotenv::dotenv().ok();
         let db = Database::new();
-        assert!(db.insert_url("https://google.com", "asdf").await);
-        assert!(db.get_url("asdf".to_string()).await == Some("https://google.com".to_string()))
+        assert!(db.insert_url("https://google.com", "asdf"));
+        assert!(db.get_url("asdf".to_string()) == Some("https://google.com".to_string()))
     }
 
     #[tokio::test]
     async fn log() {
         dotenv::dotenv().ok();
         let db = Database::new();
-        assert!(
-            db.log(
-                "asdf".to_string(),
-                "google.com".to_string(),
-                "127.0.0.1".to_string()
-            )
-            .await
-        );
+        assert!(db.log(
+            "asdf".to_string(),
+            "google.com".to_string(),
+            "127.0.0.1".to_string()
+        ));
     }
 
     #[tokio::test]
     async fn stats() {
         dotenv::dotenv().ok();
         let db = Database::new();
-        assert!(!db.get_stats().await.is_empty());
+        assert!(!db.get_stats().is_empty());
     }
 
     #[tokio::test]
@@ -530,6 +527,6 @@ mod tests {
         env_logger::init();
         let db = Database::new();
         // assert!(db.insert_token("asdf".to_string()).await);
-        assert!(db.check_token("asdf".to_string()).await);
+        assert!(db.check_token("asdf".to_string()));
     }
 }

@@ -81,7 +81,7 @@ async fn redirect(
     headers: HeaderMap,
     insecure_ip: InsecureClientIp,
 ) -> Result<axum::response::Redirect, (StatusCode, &'static str)> {
-    if let Some(redirect) = database.get_url(code.clone()).await {
+    if let Some(redirect) = database.get_url(code.clone()) {
         let ip = if database.behind_traefik {
             if let Some(h) = headers.get("X-Forwarded-For") {
                 h.to_str().unwrap_or("unknown").to_string()
@@ -91,7 +91,7 @@ async fn redirect(
         } else {
             insecure_ip.0.to_string()
         };
-        database.log(code, redirect.clone(), ip).await;
+        database.log(code, redirect.clone(), ip);
         return Ok(axum::response::Redirect::to(redirect.as_str()));
     }
     Err((StatusCode::NOT_FOUND, "404 Not Found\n-- Riplakish --"))
@@ -122,7 +122,7 @@ async fn login(State(database): State<db::Database>, headers: HeaderMap) -> Resp
         .map(char::from)
         .collect();
 
-    database.insert_token(token.clone()).await;
+    database.insert_token(token.clone());
 
     Response::builder()
         .status(StatusCode::OK)
@@ -143,7 +143,7 @@ async fn check_login(database: &db::Database, headers: &HeaderMap) -> bool {
             if cookie.starts_with("X-Token=") {
                 let token = cookie.split('=').collect::<Vec<&str>>()[1];
                 let token = token.replace(" SameSite", "");
-                return database.check_token(token.trim().to_string()).await;
+                return database.check_token(token.trim().to_string());
             }
         }
     }
@@ -160,11 +160,7 @@ async fn get_stats(State(database): State<db::Database>, headers: HeaderMap) -> 
     if check_login(&database, &headers).await {
         Response::builder()
             .status(StatusCode::OK)
-            .body(
-                serde_json::to_string(&database.get_stats().await)
-                    .unwrap()
-                    .into(),
-            )
+            .body(serde_json::to_string(&database.get_stats()).unwrap().into())
             .unwrap()
     } else {
         Response::builder()
@@ -185,7 +181,7 @@ async fn get_logs(
         Response::builder()
             .status(StatusCode::OK)
             .body(
-                serde_json::to_string(&database.get_logs(code).await)
+                serde_json::to_string(&database.get_logs(code))
                     .unwrap()
                     .into(),
             )
@@ -210,7 +206,7 @@ async fn add_url(
             .map(char::from)
             .collect();
         info!("Attempting to insert {url} with code {s}");
-        if database.insert_url(&url, &s).await {
+        if database.insert_url(&url, &s) {
             Ok((StatusCode::OK, s))
         } else {
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -228,7 +224,7 @@ async fn remove_url(
     warn!("Removing redirect code {code}");
 
     if check_login(&database, &headers).await {
-        if database.remove_url(code).await {
+        if database.remove_url(code) {
             StatusCode::OK
         } else {
             StatusCode::NOT_FOUND
@@ -246,7 +242,7 @@ async fn modify_url(
     info!("Updating {code} to new URL: {new_url}");
 
     if check_login(&database, &headers).await {
-        if database.modify_url(code, new_url).await {
+        if database.modify_url(code, new_url) {
             StatusCode::OK
         } else {
             StatusCode::NOT_FOUND
@@ -264,7 +260,7 @@ async fn modify_comment(
     info!("Updating {code} to new comment: {new_comment}");
 
     if check_login(&database, &headers).await {
-        if database.modify_comment(code, new_comment).await {
+        if database.modify_comment(code, new_comment) {
             StatusCode::OK
         } else {
             StatusCode::NOT_FOUND
