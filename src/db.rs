@@ -102,30 +102,43 @@ impl Database {
             warn!("Request failed injection test: {code}");
             return None;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
-        let query = "SELECT * FROM redirects WHERE redirect = ?";
-        if let Ok(mut statement) = connection.prepare(query) {
-            if statement.bind((1, code.as_str())).is_ok() {
-                let mut res = None;
-                while let Ok(State::Row) = statement.next() {
-                    if let Ok(s) = statement.read::<String, _>("url") {
-                        res = Some(s);
-                    } else {
-                        error!("Could not read statement as a string");
-                    }
-                }
-                if let Some(res) = res {
-                    return Some(res);
-                } else {
-                    warn!("Not found in database");
-                }
-            } else {
-                error!("Unable to bind parameter")
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return None;
             }
-        } else {
-            error!("Unable to prepare query???");
+        };
+
+        let query = "SELECT * FROM redirects WHERE redirect = ?";
+        let mut statement = match connection.prepare(query) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return None;
+            }
+        };
+
+        if let Err(err) = statement.bind((1, code.as_str())) {
+            error!("Failed to bind parameter: {:?}", err);
+            return None;
         }
-        None
+
+        let mut res = None;
+        while let Ok(State::Row) = statement.next() {
+            if let Ok(s) = statement.read::<String, _>("url") {
+                res = Some(s);
+            } else {
+                error!("Could not read statement as a string");
+            }
+        }
+
+        if let Some(res) = res {
+            Some(res)
+        } else {
+            warn!("Not found in database");
+            None
+        }
     }
 
     pub async fn insert_url(&self, url: &str, code: &str) -> bool {
@@ -133,11 +146,17 @@ impl Database {
             warn!("Request failed injection test: {url} {code}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
-        let query = format!("INSERT INTO redirects (url, redirect) VALUES ('{url}', '{code}');");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
 
-        if let Err(e) = connection.execute(query) {
-            error!("Failed to insert URL: {:?}", e);
+        let query = format!("INSERT INTO redirects (url, redirect) VALUES ('{url}', '{code}');");
+        if let Err(err) = connection.execute(query) {
+            error!("Failed to insert URL: {:?}", err);
             false
         } else {
             true
@@ -149,10 +168,17 @@ impl Database {
             warn!("Request failed injection test: {code}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         let query = format!("DELETE FROM redirects WHERE redirect = '{code}';");
-        if let Err(e) = connection.execute(query) {
-            error!("Failed to remove code: {:?}", e);
+        if let Err(err) = connection.execute(query) {
+            error!("Failed to remove code: {:?}", err);
             false
         } else {
             true
@@ -164,10 +190,17 @@ impl Database {
             warn!("Request failed injection test: {code} {url}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         let query = format!("UPDATE redirects SET url = '{url}' WHERE redirect = '{code}';");
-        if let Err(e) = connection.execute(query) {
-            error!("Failed to modify URL: {:?}", e);
+        if let Err(err) = connection.execute(query) {
+            error!("Failed to modify URL: {:?}", err);
             false
         } else {
             true
@@ -179,14 +212,30 @@ impl Database {
             warn!("Request failed injection test: {code} {comment}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         let query = "UPDATE redirects SET comment = ? WHERE redirect = ?;";
-        let mut statement = connection.prepare(query).unwrap();
-        statement
-            .bind(&[(1, comment.as_str()), (2, code.as_str())][..])
-            .unwrap();
-        if let Err(e) = statement.next() {
-            error!("Failed to modify URL: {:?}", e);
+        let mut statement = match connection.prepare(query) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return false;
+            }
+        };
+
+        if let Err(err) = statement.bind(&[(1, comment.as_str()), (2, code.as_str())][..]) {
+            error!("Failed to bind parameters: {:?}", err);
+            return false;
+        }
+
+        if let Err(err) = statement.next() {
+            error!("Failed to modify URL: {:?}", err);
             false
         } else {
             true
@@ -199,13 +248,18 @@ impl Database {
             warn!("Request failed injection test: {code} {ip}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         let naive_date_time = chrono::offset::Local::now().format("%m/%d/%Y %T");
-        let query = format!(
-                                "INSERT INTO log (redirect, ip, url, timestamp) VALUES ('{code}', '{ip}', '{url}', '{naive_date_time}');"
-                            );
-        if let Err(e) = connection.execute(query) {
-            error!("Failed to log request: {:?}", e);
+        let query = format!("INSERT INTO log (redirect, ip, url, timestamp) VALUES ('{code}', '{ip}', '{url}', '{naive_date_time}');");
+        if let Err(err) = connection.execute(query) {
+            error!("Failed to log request: {:?}", err);
             false
         } else {
             true
@@ -213,12 +267,26 @@ impl Database {
     }
 
     pub async fn get_stats(&self) -> Vec<DatabaseStats> {
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return Vec::new();
+            }
+        };
+
         let query = "SELECT r.url, r.redirect, COUNT(l.id) AS log_count, r.comment
                             FROM redirects r
                             LEFT JOIN log l ON r.redirect = l.redirect
                             GROUP BY r.url, r.redirect;";
-        let mut statement = connection.prepare(query).unwrap();
+        let mut statement = match connection.prepare(query) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return Vec::new();
+            }
+        };
+
         let mut res = Vec::new();
         while let Ok(State::Row) = statement.next() {
             if let Ok(url) = statement.read::<String, _>(0) {
@@ -248,12 +316,28 @@ impl Database {
     }
 
     pub async fn get_logs(&self, code: String) -> Vec<DatabaseLog> {
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return Vec::new();
+            }
+        };
+
         let mut res = Vec::new();
-        let mut statement = connection
-            .prepare("SELECT * FROM log WHERE redirect = ?")
-            .unwrap();
-        statement.bind((1, code.as_str())).unwrap();
+        let mut statement = match connection.prepare("SELECT * FROM log WHERE redirect = ?") {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return Vec::new();
+            }
+        };
+
+        if let Err(err) = statement.bind((1, code.as_str())) {
+            error!("Failed to bind parameter: {:?}", err);
+            return Vec::new();
+        }
+
         while let Ok(State::Row) = statement.next() {
             if let Ok(timestamp) = statement.read::<String, _>(1) {
                 if let Ok(ip) = statement.read::<String, _>(4) {
@@ -277,20 +361,34 @@ impl Database {
             warn!("Request failed injection test: {token}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
-        // Get the current time plus one hour
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         let expires = chrono::offset::Local::now()
             .checked_add_signed(chrono::Duration::hours(1))
             .unwrap();
 
-        // Insert the token into the database
         let query = "INSERT INTO tokens (token, expiration) VALUES (?, ?);";
-        let mut statement = connection.prepare(query).unwrap();
-        statement
-            .bind(&[(1, token.as_str()), (2, &expires.to_rfc3339())][..])
-            .unwrap();
-        if let Err(e) = statement.next() {
-            error!("Failed to insert token: {:?}", e);
+        let mut statement = match connection.prepare(query) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return false;
+            }
+        };
+
+        if let Err(err) = statement.bind(&[(1, token.as_str()), (2, &expires.to_rfc3339())][..]) {
+            error!("Failed to bind parameters: {:?}", err);
+            return false;
+        }
+
+        if let Err(err) = statement.next() {
+            error!("Failed to insert token: {:?}", err);
             false
         } else {
             true
@@ -302,34 +400,71 @@ impl Database {
             warn!("Request failed injection test: {token}");
             return false;
         }
-        let connection = sqlite::open(&self.filename).expect("Failed to read to database");
+        let connection = match sqlite::open(&self.filename) {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("Failed to open database: {:?}", err);
+                return false;
+            }
+        };
+
         println!("Checking token {token}");
         let query = "SELECT * FROM tokens WHERE token = ?;";
-        let mut statement = connection.prepare(query).unwrap();
-        statement.bind((1, token.as_str())).unwrap();
+        let mut statement = match connection.prepare(query) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                error!("Failed to prepare query: {:?}", err);
+                return false;
+            }
+        };
+
+        if let Err(err) = statement.bind((1, token.as_str())) {
+            error!("Failed to bind parameter: {:?}", err);
+            return false;
+        }
+
         if let Ok(State::Row) = statement.next() {
             if let Ok(expires) = statement.read::<String, _>(2) {
                 if let Ok(expires) = chrono::DateTime::parse_from_rfc3339(expires.as_str()) {
                     if expires > chrono::offset::Local::now() {
-                        // Clear old expired tokens
                         let query = "DELETE FROM tokens WHERE expiration < ?;";
-                        let mut statement = connection.prepare(query).unwrap();
-                        statement
-                            .bind((1, chrono::offset::Local::now().to_rfc3339().as_str()))
-                            .unwrap();
-                        if let Err(e) = statement.next() {
-                            error!("Failed to delete expired tokens: {:?}", e);
+                        let mut statement = match connection.prepare(query) {
+                            Ok(stmt) => stmt,
+                            Err(err) => {
+                                error!("Failed to prepare query: {:?}", err);
+                                return false;
+                            }
+                        };
+
+                        if let Err(err) =
+                            statement.bind((1, chrono::offset::Local::now().to_rfc3339().as_str()))
+                        {
+                            error!("Failed to bind parameter: {:?}", err);
+                            return false;
+                        }
+
+                        if let Err(err) = statement.next() {
+                            error!("Failed to delete expired tokens: {:?}", err);
                         }
                         return true;
                     } else {
                         info!("Expired token was used");
-
-                        // Delete old token
                         let query = "DELETE FROM tokens WHERE token = ?;";
-                        let mut statement = connection.prepare(query).unwrap();
-                        statement.bind((1, token.as_str())).unwrap();
-                        if let Err(e) = statement.next() {
-                            error!("Failed to delete token: {:?}", e);
+                        let mut statement = match connection.prepare(query) {
+                            Ok(stmt) => stmt,
+                            Err(err) => {
+                                error!("Failed to prepare query: {:?}", err);
+                                return false;
+                            }
+                        };
+
+                        if let Err(err) = statement.bind((1, token.as_str())) {
+                            error!("Failed to bind parameter: {:?}", err);
+                            return false;
+                        }
+
+                        if let Err(err) = statement.next() {
+                            error!("Failed to delete token: {:?}", err);
                         }
                         return false;
                     }
