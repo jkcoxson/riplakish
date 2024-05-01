@@ -108,7 +108,6 @@
   <canvas id="qr-canvas"></canvas>
 </div>
 
-
 <style>
   /* Styling for the input box */
   input[type="text"] {

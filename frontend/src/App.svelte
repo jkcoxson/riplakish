@@ -5,7 +5,7 @@
 
   import { onMount } from "svelte";
 
-  const API_URL = "http://bible.org:8083"; // change for npm run dev
+  const API_URL = ""; // change for npm run dev
   let BASE_URL = "127.0.0.1";
 
   let redirects = [];
@@ -163,7 +163,9 @@
                 >View Details</button
               >
               <button on:click={() => removeRedirect(redirect.code)}
-                >{possibleDeletes.includes(redirect.code) ? "Confirm Delete" : "Delete"}</button
+                >{possibleDeletes.includes(redirect.code)
+                  ? "Confirm Delete"
+                  : "Delete"}</button
               >
               <button
                 on:click={() => {
