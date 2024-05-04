@@ -389,6 +389,10 @@ async fn get_token(headers: &Headers) -> Option<String> {
 async fn check_token(headers: &Headers, d1: &D1Database) -> bool {
     match get_token(headers).await {
         Some(token) => {
+            if check_string_injection(&token) {
+                return false;
+            }
+
             // check the token
             let statement = d1.prepare("SELECT expiration FROM tokens WHERE token = ?");
             let query = match statement.bind(&[token.into()]) {
