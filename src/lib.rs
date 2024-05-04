@@ -1,3 +1,4 @@
+#![cfg(target_arch = "wasm32")]
 use serde::{Deserialize, Serialize};
 use worker::*;
 
@@ -16,21 +17,21 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     }
     router
         .get_async("/admin", |_req, ctx| async move {
-            return Response::from_html(include_str!("../frontend/dist/index.html"));
+            Response::from_html(include_str!("../frontend/dist/index.html"))
         })
         .get_async("/scripts.js", |_req, ctx| async move {
             let mut headers = Headers::new();
             headers.append("Content-Type", "text/javascript")?;
-            return Ok(Response::ok(include_str!("../frontend/dist/scripts.js"))
+            Ok(Response::ok(include_str!("../frontend/dist/scripts.js"))
                 .unwrap()
-                .with_headers(headers));
+                .with_headers(headers))
         })
         .get_async("/styles.css", |_req, ctx| async move {
             let mut headers = Headers::new();
             headers.append("Content-Type", "text/css")?;
-            return Ok(Response::ok(include_str!("../frontend/dist/styles.css"))
+            Ok(Response::ok(include_str!("../frontend/dist/styles.css"))
                 .unwrap()
-                .with_headers(headers));
+                .with_headers(headers))
         })
         // handle files and fields from multipart/form-data requests
         .post_async("/upload", |mut req, _ctx| async move {

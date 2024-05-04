@@ -25,7 +25,7 @@ serde_json = "1.0.116"
 crate-type = ["cdylib"]
 
 [target.'cfg(any(target_arch = "wasm32"))'.dependencies]
-worker = { version = "*" }
+worker = { version = "0.2.0", features = ["d1"] }
 
 [profile.release.'cfg(any(target_arch = "wasm32"))']
 opt-level = "s"   # optimize for size in release builds

@@ -7,3 +7,8 @@ command = "cargo install -q worker-build && worker-build --release"
 
 [env.dev]
 build = { command = "cargo install -q worker-build && worker-build --dev" }
+
+[[d1_databases]]
+binding = "DB"                                       # i.e. available in your Worker on env.DB
+database_name = "riplakish"
+database_id = "64dcaf0b-3a07-430e-b02d-0f2693af6b66"
