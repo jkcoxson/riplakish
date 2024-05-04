@@ -1,4 +1,7 @@
 #![cfg(target_arch = "wasm32")]
+
+// Cloudflare port of Riplakish
+
 use serde::{Deserialize, Serialize};
 use worker::*;
 
@@ -111,8 +114,59 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
             Response::redirect(url)
         })
-        .get_async("/admin/stats", |_req, ctx| async move {
+        .get_async("/admin/login", |req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
+            let username = ctx.env.var("USERNAME")?.to_string();
+            let password = ctx.env.var("PASSWORD")?.to_string();
+            wasm_rs_dbg::dbg!(&username);
+            wasm_rs_dbg::dbg!(&password);
+
+            let input_username = req.headers().get("X-Username")?;
+            let input_password = req.headers().get("X-Password")?;
+            wasm_rs_dbg::dbg!(&input_username);
+            wasm_rs_dbg::dbg!(&input_password);
+
+            if input_username == Some(username) && input_password == Some(password) {
+                // Generate a token
+                let mut buf = [0; 16];
+                let _ = getrandom::getrandom(&mut buf);
+                let mut token = String::new();
+                for c in buf {
+                    token.push_str(&format!("{:02X}", c));
+                }
+
+                // Set the token
+                // INSERT INTO tokens (token, expiration) VALUES (?, ?);
+                let expires = chrono::offset::Local::now()
+                    .checked_add_signed(chrono::Duration::hours(1))
+                    .unwrap();
+                let statement = d1.prepare("INSERT INTO tokens (token, expiration) VALUES (?, ?)");
+                let query = statement.bind(&[token.clone().into(), expires.to_rfc3339().into()])?;
+
+                if let Err(e) = query.run().await {
+                    return Response::error(e.to_string(), 500);
+                }
+
+                // Set the X-Token header
+                let mut headers = Headers::new();
+                headers.append(
+                    "Set-Cookie",
+                    format!("X-Token={token}; SameSite=Strict; HttpOnly").as_str(),
+                )?;
+                Ok(Response::ok("")?.with_headers(headers))
+            } else {
+                Response::error("Unauthorized", 401)
+            }
+        })
+        .get_async("/base", |_, ctx| async move {
+            Response::ok(ctx.env.var("BASE_URL")?.to_string())
+        })
+        .get_async("/admin/stats", |req, ctx| async move {
+            let d1 = ctx.env.d1("riplakish")?;
+
+            if !check_token(&req.headers(), &d1).await {
+                return Response::error("Unauthorized", 401);
+            }
 
             let query = "SELECT r.url, r.redirect, COUNT(l.id) AS log_count, r.comment
             FROM redirects r
@@ -135,8 +189,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 Err(_) => Response::error("Failed to query", 500),
             }
         })
-        .get_async("/admin/logs/:code", |_req, ctx| async move {
+        .get_async("/admin/logs/:code", |req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
+
+            if !check_token(&req.headers(), &d1).await {
+                return Response::error("Unauthorized", 401);
+            }
+
             let code = match ctx.param("code") {
                 Some(c) => c,
                 None => {
@@ -158,8 +217,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 Err(_) => Response::error("Failed to query", 500),
             }
         })
-        .post_async("/admin/add/*url", |_req, ctx| async move {
+        .post_async("/admin/add/*url", |req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
+
+            if !check_token(&req.headers(), &d1).await {
+                return Response::error("Unauthorized", 401);
+            }
+
             let url = match ctx.param("url") {
                 Some(u) => u,
                 None => {
@@ -188,8 +252,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
             Response::ok("Success")
         })
-        .delete_async("/admin/remove/:code", |_req, ctx| async move {
+        .delete_async("/admin/remove/:code", |req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
+
+            if !check_token(&req.headers(), &d1).await {
+                return Response::error("Unauthorized", 401);
+            }
+
             let code = match ctx.param("code") {
                 Some(c) => c,
                 None => {
@@ -211,8 +280,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
             Response::ok("Success")
         })
-        .post_async("/admin/modify/:code/*new_url", |_req, ctx| async move {
+        .post_async("/admin/modify/:code/*new_url", |req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
+
+            if !check_token(&req.headers(), &d1).await {
+                return Response::error("Unauthorized", 401);
+            }
+
             let code = match ctx.param("code") {
                 Some(c) => c,
                 None => {
@@ -243,8 +317,13 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
         })
         .post_async(
             "/admin/modify-comment/:code/*new_comment",
-            |_req, ctx| async move {
+            |req, ctx| async move {
                 let d1 = ctx.env.d1("riplakish")?;
+
+                if !check_token(&req.headers(), &d1).await {
+                    return Response::error("Unauthorized", 401);
+                }
+
                 let code = match ctx.param("code") {
                     Some(c) => c,
                     None => {
@@ -290,4 +369,59 @@ fn check_string_injection(s: &str) -> bool {
         }
     }
     false
+}
+
+#[inline]
+async fn get_token(headers: &Headers) -> Option<String> {
+    let cookies = headers.get("cookie").ok()??;
+    let cookies = cookies.split(';').collect::<Vec<&str>>();
+    for cookie in cookies {
+        if cookie.starts_with("X-Token=") {
+            let token = cookie.split('=').collect::<Vec<&str>>()[1];
+            let token = token.replace(" SameSite", "");
+
+            return Some(token);
+        }
+    }
+    None
+}
+
+async fn check_token(headers: &Headers, d1: &D1Database) -> bool {
+    match get_token(headers).await {
+        Some(token) => {
+            // check the token
+            let statement = d1.prepare("SELECT expiration FROM tokens WHERE token = ?");
+            let query = match statement.bind(&[token.into()]) {
+                Ok(q) => q,
+                Err(_) => return false,
+            };
+            let result = match query.first::<String>(Some("expiration")).await {
+                Ok(r) => r,
+                Err(_) => return false,
+            };
+
+            let res = match result {
+                Some(r) => r,
+                None => return false,
+            };
+
+            let expires = match chrono::DateTime::parse_from_rfc3339(&res) {
+                Ok(e) => e,
+                Err(_) => return false,
+            };
+
+            if chrono::offset::Local::now() > expires {
+                return false;
+            }
+
+            // Delete old tokens
+            let statement = d1.prepare("DELETE FROM tokens WHERE expiration < ?");
+            if let Ok(query) = statement.bind(&[chrono::offset::Local::now().to_rfc3339().into()]) {
+                let _ = query.run().await;
+            }
+
+            true
+        }
+        None => false,
+    }
 }

@@ -27,6 +27,7 @@ crate-type = ["cdylib"]
 [target.'cfg(any(target_arch = "wasm32"))'.dependencies]
 worker = { version = "0.2.0", features = ["d1"] }
 getrandom = { version = "0.2", features = ["js"] }
+wasm-rs-dbg = "0.1.2"
 
 [profile.release.'cfg(any(target_arch = "wasm32"))']
 opt-level = "s"   # optimize for size in release builds
