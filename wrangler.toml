@@ -9,6 +9,10 @@ command = "cargo install -q worker-build && worker-build --release"
 build = { command = "cargo install -q worker-build && worker-build --dev" }
 
 [[d1_databases]]
-binding = "DB"                                       # i.e. available in your Worker on env.DB
+binding = "riplakish"                                # i.e. available in your Worker on env.DB
 database_name = "riplakish"
 database_id = "64dcaf0b-3a07-430e-b02d-0f2693af6b66"
+
+[dev]
+ip = "0.0.0.0"
+port = 8787
