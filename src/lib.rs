@@ -3,13 +3,6 @@ use serde::{Deserialize, Serialize};
 use worker::*;
 
 #[derive(Deserialize)]
-struct Redirect {
-    id: u32,
-    url: String,
-    redirect: String,
-}
-
-#[derive(Deserialize)]
 struct Stat {
     url: String,
     redirect: String,
@@ -64,7 +57,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 .with_headers(headers))
         })
         // REMOVE BEFORE DEPLOY
-        .get_async("/headers", |req, ctx| async move {
+        .get_async("/headers", |req, _ctx| async move {
             // return the headers
             let headers = req.headers();
             Response::ok(format!("{:?}", headers))
@@ -83,15 +76,15 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 return Response::error("Bad Request", 400);
             }
 
-            let statement = d1.prepare("SELECT * FROM redirects WHERE redirect = ?");
+            let statement = d1.prepare("SELECT url FROM redirects WHERE redirect = ?");
             let query = statement.bind(&[code.into()])?;
-            let result = query.first::<Redirect>(None).await?;
+            let result = query.first::<String>(Some("url")).await?;
             let res = match result {
                 Some(r) => r,
                 None => return Response::error("Not found", 404),
             };
 
-            let url = match Url::parse(&res.url) {
+            let url = match Url::parse(&res) {
                 Ok(u) => u,
                 Err(_) => return Response::error("Bad URL", 500),
             };
@@ -195,7 +188,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
 
             Response::ok("Success")
         })
-        .delete_async("/admin/remove/:code", |mut req, ctx| async move {
+        .delete_async("/admin/remove/:code", |_req, ctx| async move {
             let d1 = ctx.env.d1("riplakish")?;
             let code = match ctx.param("code") {
                 Some(c) => c,
