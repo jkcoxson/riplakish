@@ -84,7 +84,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             let result = query.first::<String>(Some("url")).await?;
             let res = match result {
                 Some(r) => r,
-                None => return Response::error("Not found", 404),
+                None => return Response::error("404 Not found\n\n-- Riplakish --", 404),
             };
 
             let url = match Url::parse(&res) {
